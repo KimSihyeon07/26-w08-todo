@@ -1,6 +1,8 @@
+const STORAGE_KEY = 'todos';
+
 // DOM 요소 선택
+const todoForm = document.getElementById('todo-form');
 const todoInput = document.getElementById('todo-input');
-const addBtn = document.getElementById('add-btn');
 const todoList = document.getElementById('todo-list');
 const itemsLeft = document.getElementById('items-left');
 const clearCompletedBtn = document.getElementById('clear-completed-btn');
@@ -8,19 +10,55 @@ const filterBtns = document.querySelectorAll('.filter-btn');
 const currentDateEl = document.getElementById('current-date');
 
 // 앱 상태 관리
-let todos = JSON.parse(localStorage.getItem('todos')) || [];
+let todos = loadTodos();
 let currentFilter = 'all';
+
+function loadTodos() {
+    const savedTodos = localStorage.getItem(STORAGE_KEY);
+    if (savedTodos === null) {
+        return [];
+    }
+
+    try {
+        const parsedTodos = JSON.parse(savedTodos);
+        if (!Array.isArray(parsedTodos) || !parsedTodos.every(isTodo)) {
+            throw new Error('저장된 할 일 데이터 형식이 올바르지 않습니다.');
+        }
+        return parsedTodos;
+    } catch (error) {
+        console.error('저장된 할 일을 불러오지 못했습니다.', error);
+        alert('저장된 할 일 데이터를 불러오지 못했습니다.');
+        return [];
+    }
+}
+
+function isTodo(value) {
+    return value !== null
+        && typeof value === 'object'
+        && Number.isFinite(value.id)
+        && typeof value.text === 'string'
+        && typeof value.completed === 'boolean';
+}
 
 // 오늘 날짜 표시
 function displayDate() {
     const today = new Date();
-    const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
-    currentDateEl.textContent = today.toLocaleDateString('ko-KR', options);
+    currentDateEl.textContent = new Intl.DateTimeFormat('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long'
+    }).format(today);
 }
 
 // 로컬 스토리지에 저장
 function saveTodos() {
-    localStorage.setItem('todos', JSON.stringify(todos));
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+    } catch (error) {
+        console.error('할 일을 저장하지 못했습니다.', error);
+        alert('할 일을 저장하지 못했습니다. 브라우저 저장 공간을 확인해주세요.');
+    }
 }
 
 // 할 일 추가 함수
@@ -36,6 +74,10 @@ function addTodo() {
         text: text,
         completed: false
     };
+
+    while (todos.some(todo => todo.id === newTodo.id)) {
+        newTodo.id += 1;
+    }
 
     todos.push(newTodo);
     saveTodos();
@@ -72,33 +114,49 @@ function clearCompleted() {
 
 // 화면에 렌더링
 function renderTodos() {
-    // 필터링 적용
-    let filteredTodos = todos;
-    if (currentFilter === 'active') {
-        filteredTodos = todos.filter(todo => !todo.completed);
-    } else if (currentFilter === 'completed') {
-        filteredTodos = todos.filter(todo => todo.completed);
-    }
-
-    // HTML 생성
-    todoList.innerHTML = '';
+    const filteredTodos = todos.filter(todo => {
+        if (currentFilter === 'active') {
+            return !todo.completed;
+        }
+        if (currentFilter === 'completed') {
+            return todo.completed;
+        }
+        return true;
+    });
+    todoList.replaceChildren();
 
     if (filteredTodos.length === 0) {
-        todoList.innerHTML = `<p style="text-align: center; color: #94a3b8; padding: 20px 0;">할 일이 없습니다.</p>`;
+        const emptyState = document.createElement('li');
+        emptyState.className = 'empty-state';
+        emptyState.textContent = '할 일이 없습니다.';
+        todoList.appendChild(emptyState);
     } else {
         filteredTodos.forEach(todo => {
             const li = document.createElement('li');
             li.className = `todo-item ${todo.completed ? 'completed' : ''}`;
-            
-            li.innerHTML = `
-                <div class="todo-left">
-                    <input type="checkbox" ${todo.completed ? 'checked' : ''} onchange="toggleTodo(${todo.id})">
-                    <span class="todo-text">${escapeHtml(todo.text)}</span>
-                </div>
-                <button class="delete-btn" onclick="deleteTodo(${todo.id})">
-                    <i class="fa-solid fa-trash-can"></i>
-                </button>
-            `;
+
+            const todoLeft = document.createElement('div');
+            todoLeft.className = 'todo-left';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = todo.completed;
+            checkbox.setAttribute('aria-label', `완료: ${todo.text}`);
+            checkbox.addEventListener('change', () => toggleTodo(todo.id));
+
+            const todoText = document.createElement('span');
+            todoText.className = 'todo-text';
+            todoText.innerHTML = escapeHtml(todo.text);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'delete-btn';
+            deleteButton.type = 'button';
+            deleteButton.setAttribute('aria-label', `삭제: ${todo.text}`);
+            deleteButton.innerHTML = '<i class="fa-solid fa-trash-can" aria-hidden="true"></i>';
+            deleteButton.addEventListener('click', () => deleteTodo(todo.id));
+
+            todoLeft.append(checkbox, todoText);
+            li.append(todoLeft, deleteButton);
             todoList.appendChild(li);
         });
     }
@@ -116,11 +174,9 @@ function escapeHtml(str) {
 }
 
 // 이벤트 리스너 등록
-addBtn.addEventListener('click', addTodo);
-todoInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        addTodo();
-    }
+todoForm.addEventListener('submit', event => {
+    event.preventDefault();
+    addTodo();
 });
 
 clearCompletedBtn.addEventListener('click', clearCompleted);
@@ -128,9 +184,13 @@ clearCompletedBtn.addEventListener('click', clearCompleted);
 // 필터 버튼 이벤트
 filterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-        filterBtns.forEach(b => b.classList.remove('active'));
+        filterBtns.forEach(filterBtn => {
+            filterBtn.classList.remove('active');
+            filterBtn.setAttribute('aria-pressed', 'false');
+        });
         btn.classList.add('active');
-        currentFilter = btn.getAttribute('data-filter');
+        btn.setAttribute('aria-pressed', 'true');
+        currentFilter = btn.dataset.filter;
         renderTodos();
     });
 });
