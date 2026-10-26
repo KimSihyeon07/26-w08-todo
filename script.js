@@ -81,7 +81,7 @@ function addTodo() {
 
     todos.push(newTodo);
     saveTodos();
-    renderTodos();
+    renderTodos(newTodo.id);
     todoInput.value = '';
     todoInput.focus();
 }
@@ -113,7 +113,7 @@ function clearCompleted() {
 }
 
 // 화면에 렌더링
-function renderTodos() {
+function renderTodos(animateTodoId = null) {
     const filteredTodos = todos.filter(todo => {
         if (currentFilter === 'active') {
             return !todo.completed;
@@ -127,13 +127,13 @@ function renderTodos() {
 
     if (filteredTodos.length === 0) {
         const emptyState = document.createElement('li');
-        emptyState.className = 'py-5 text-center text-slate-400';
+        emptyState.className = 'empty-state py-5 text-center text-slate-400';
         emptyState.textContent = '할 일이 없습니다.';
         todoList.appendChild(emptyState);
     } else {
         filteredTodos.forEach(todo => {
             const li = document.createElement('li');
-            li.className = 'todo-item mb-2.5 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 transition hover:border-slate-300';
+            li.className = `todo-item mb-2.5 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 transition hover:border-slate-300 ${todo.id === animateTodoId ? 'todo-item--entering' : ''}`;
 
             const todoLeft = document.createElement('div');
             todoLeft.className = 'flex min-w-0 flex-1 items-center gap-3';
